@@ -29,7 +29,7 @@ const fetchContentFromJina = async (input) => {
   try {
     const response = await axios.get(url, {
       headers: {
-        'Authorization': `Bearer ${process.env.JINA_API_KEY}`,
+        'Authorization': `Bearer ${process.env.JINA_API_KEY}`, // Using the API key from .env
       },
     });
     return response.data;
