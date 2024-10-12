@@ -1,64 +1,66 @@
-require('dotenv').config();
-const express = require('express');
-const axios = require('axios');
+import express from 'express';
+import fetch from 'node-fetch'; // Use dynamic import if needed
+import https from 'https';
+
 const app = express();
+const port = 3002; // You can change the port if needed
 
-// Middleware to parse JSON request bodies
-app.use(express.json());
+// Jina Reader function
+async function jinaReaderStream(query) {
+  const agent = new https.Agent({
+    rejectUnauthorized: false, // Allow self-signed certificates
+  });
 
-// Jina Reader endpoints
-const JINA_READER_URL = 'https://r.jina.ai/';
-const JINA_SEARCH_URL = 'https://s.jina.ai/';
+  const encodedQuery = encodeURIComponent(query);
+  const url = `https://s.jina.ai/${encodedQuery}`;
 
-// Function to detect if input is a URL or a query
-const isUrl = (input) => {
-  try {
-    new URL(input);
-    return true;
-  } catch (e) {
-    return false;
+  const response = await fetch(url, {
+    method: 'GET', // Changed to GET
+    headers: {
+      'Accept': 'text/event-stream',
+      'Content-Type': 'application/json',
+    },
+    agent: agent,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
-};
 
-// Function to fetch content from Jina Reader API
-const fetchContentFromJina = async (input) => {
-  const url = isUrl(input)
-    ? `${JINA_READER_URL}${input}` // If input is a URL
-    : `${JINA_SEARCH_URL}${encodeURIComponent(input)}`; // If input is a query
+  return new Promise((resolve, reject) => {
+    let result = '';
 
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        'Authorization': `Bearer ${process.env.JINA_API_KEY}`, // Using the API key from .env
-      },
+    // Collect the data chunks but don't print anything until the stream ends
+    response.body.on('data', (chunk) => {
+      result += chunk.toString();
     });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching content from Jina:', error.response ? error.response.data : error.message);
-    throw new Error('Failed to fetch content from Jina Reader.');
-  }
-};
 
-// Handle POST request for URL or query
-app.post('/fetch-content', async (req, res) => {
-  const { input } = req.body;
-  if (!input) {
-    return res.status(400).json({ error: 'Input (URL or query) is required.' });
+    response.body.on('end', () => {
+      resolve(result); // Return the full result after streaming is complete
+    });
+
+    response.body.on('error', (err) => {
+      reject(err); // Handle any errors
+    });
+  });
+}
+
+// API endpoint to handle incoming requests
+app.get('/query', async (req, res) => {
+  const userQuery = req.query.q; // Get the 'q' parameter from the URL
+  if (!userQuery) {
+    return res.status(400).send('Query parameter "q" is required.');
   }
 
   try {
-    const content = await fetchContentFromJina(input);
-    res.json({ content });
+    const result = await jinaReaderStream(userQuery); // Call the Jina Reader function
+    res.json({ result }); // Send the result back to the client
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).send(`Error processing query: ${error.message}`);
   }
 });
 
-// Start the Express server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Start the server
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
-
-// Exporting the app for Vercel
-module.exports = app;
