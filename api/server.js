@@ -5,6 +5,13 @@ import https from 'https';
 const app = express();
 const port = 3002; // You can change the port if needed
 
+function whitelistChars(str, allowedChars) {
+  const regex = new RegExp(`[^${allowedChars}]`, 'g');
+  return str.replace(regex, '');
+}
+
+const allowed = "abcdefghijkl]mno[pqr)st(uvwx;yzA,BC.DEFGHI/JK:LMNOPQRSTUVWXYZ";
+
 // Jina Reader function
 async function jinaReaderStream(query) {
   const agent = new https.Agent({
@@ -36,8 +43,8 @@ async function jinaReaderStream(query) {
     });
 
     response.body.on('end', () => {
-      resolve(result); // Return the full result after streaming is complete
-    });
+      resolve(result.split('event: data').at(-1).slice(0, 30000).replace(/[\n]/g, '').replace(/[^a-zA-Z0-9\/\:\(\)\[\;\]\s\.\,\%]/gi, '')); // Return the full result after streaming is complete
+    }); //.replace(/[\\n]/g, '')
 
     response.body.on('error', (err) => {
       reject(err); // Handle any errors
